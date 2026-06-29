@@ -1,20 +1,11 @@
-# Chặn file chứa thông tin mật khẩu, API Key
 .env
 
-# Chặn bộ nhớ đệm tự sinh của Python
 __pycache__/
 *.pyc
 
-# Chặn toàn bộ file dữ liệu CSV thô (Vì quá nặng và không cần quản lý phiên bản code)
-*.csv
-data/raw/*.csv
-data/processed/*.csv
-
-# Chặn các file nén lưu trữ dự phòng
 *.zip
 data/backups/*.zip
 
-# Chặn file tạm cấu hình cá nhân của VS Code / Hệ điều hành
 .vscode/
 .DS_Store
 
