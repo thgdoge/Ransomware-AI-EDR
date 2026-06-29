@@ -1,0 +1,13 @@
+
+# Auto-learned Whitelist: AdobePIP.dll
+52b7a99d6a66e650c64406c0c419e5dc1f32d7078d23164a6037d0dedf78b064
+# Auto-learned Whitelist: idman642build63.exe
+02586d66a474e000030d283bfa460764ef88f7c7dbbf604af6731f80298b980d
+# Auto-learned Whitelist: idman642build63.exe
+02586d66a474e000030d283bfa460764ef88f7c7dbbf604af6731f80298b980d
+# Auto-learned Whitelist: idman642build63.exe
+02586d66a474e000030d283bfa460764ef88f7c7dbbf604af6731f80298b980d
+# Auto-learned Whitelist: idman642build63.exe
+02586d66a474e000030d283bfa460764ef88f7c7dbbf604af6731f80298b980d
+# Auto-learned Whitelist: BorisFX Sapphire AE-PR 2025.5.exe
+063c83ff64cb5895dad8ec005209331a5ffe18f1a12b63379c1066e5c13157c0
