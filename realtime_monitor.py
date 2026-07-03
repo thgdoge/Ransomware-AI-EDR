@@ -222,7 +222,7 @@ class EDR_SOC_Handler(FileSystemEventHandler):
         return False
 
     def on_moved(self, event):
-        if r"D:\FPTU" in event.src_path and "giamsat" not in event.src_path:
+        if r"D:\iam" in event.src_path and "giamsat" not in event.src_path:
             return
 
         if not event.is_directory:
@@ -237,11 +237,24 @@ class EDR_SOC_Handler(FileSystemEventHandler):
                 file_name = os.path.basename(event.src_path)
                 print(f"[ALERT] Anomalous mass-renaming signature observed: {file_name} -> {new_ext}")
                 
+                self.log_event(
+                    file_name=f"Encrypted: {file_name}", 
+                    status="Malware Detected", 
+                    conclusion="Behavioral: File Renamed", 
+                    rf=100.0, 
+                    xgb=100.0, 
+                    if_score=100.0, 
+                    lgbm=100.0
+                )
+
                 if self.rename_count >= 3:
                     print("[ALERT] Sequential file corruption ceiling passed. Invoking reactive defense loop.")
                     dummy_scores = {'RF': 100.0, 'XGB': 100.0, 'LGBM': 100.0, 'IF': 100.0}
-                    send_ai_malware_alert(file_name=f"Mass Modification Activity ({file_name})", risk_scores=dummy_scores, action_taken="Isolate Network (Urgent)")
+                    
+                    send_ai_malware_alert(file_name=f"Mass Modification Activity", risk_scores=dummy_scores, action_taken="Isolate Network (Urgent)")
+
                     isolate_network()
+
                     self.rename_count = 0
 
     def on_created(self, event):
@@ -320,12 +333,24 @@ class EDR_SOC_Handler(FileSystemEventHandler):
         self.log_event(file_name, status, conclusion, sub_scores['rf'], sub_scores['xgb'], sub_scores['if'], sub_scores['lgbm'])
 
     def log_event(self, file_name, status, conclusion, rf, xgb, if_score, lgbm):
-        with open(LOG_FILE, mode='a', newline='', encoding='utf-8') as f:
-            csv.writer(f).writerow([
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
-                file_name, status, conclusion, 
-                f"{rf:.1f}", f"{xgb:.1f}", f"{if_score:.1f}", f"{lgbm:.1f}"
-            ])
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with open(LOG_FILE, mode='a', newline='', encoding='utf-8') as f:
+                    csv.writer(f).writerow([
+                        datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
+                        file_name, status, conclusion, 
+                        f"{rf:.1f}", f"{xgb:.1f}", f"{if_score:.1f}", f"{lgbm:.1f}"
+                    ])
+                break  
+            except PermissionError:
+                if attempt < max_retries - 1:
+                    time.sleep(0.5)  
+                else:
+                    print(f"[WARN] Bỏ qua ghi log cho '{file_name}': File {LOG_FILE} has been blocked by (Excel/Streamlit)!")
+            except Exception as e:
+                print(f"[ERROR] Unknown Error while logging: {e}")
+                break
 
 def update_ai_models_online():
     """Triggers partial fits and saves newly compiled states to disk configurations."""
