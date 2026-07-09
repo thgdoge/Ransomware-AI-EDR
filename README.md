@@ -1,4 +1,4 @@
-```markdown
+
 # AI-Based Continuous Behavioral Monitoring and Adaptive Response for Ransomware Detection
 
 <p align="center">
@@ -21,9 +21,11 @@ The system operates on a multi-layer verification model engineered to minimize F
 * **Behavioral Layer (Layer 2)**: Continuously tracks running processes using Windows API low-level signals and event telemetry (Sysmon). It captures anomalous file I/O operations, mass extension adjustments, registry persistence, and unauthorized system recovery manipulations.
 
 ### 🔹 Ensemble Scoring Engine
-Instead of relying on a single classifier, the system computes a confidence-based risk score $S(x)$ using an ensemble soft-voting consensus mechanism from supervised classifiers (Random Forest, XGBoost, and LightGBM):
+Instead of relying on a single classifier, the system computes a confidence-based risk score $S(x)$ using an ensemble soft-voting consensus mechanism from supervised classifiers (Random Forest, XGBoost, and LightGBM).
 
-$$S(x)=\frac{1}{N}\sum_{i=1}^{N}P_{i}(x)$$
+$$
+S(x)=\frac{1}{N}\sum_{i=1}^{N}P_{i}(x)
+$$
 
 > **Where:**
 > * $S(x)$: Final confidence score.
@@ -177,10 +179,28 @@ $$\text{Response Level} = \begin{cases} L, & \text{if } R < T_1 \\ M, & \text{if
 
 | Threat Severity | Detection Characteristics | Autonomous Response Actions | Success Rate |
 | --- | --- | --- | --- |
-| **Low ($L$)** | Normal behavior with minor anomalies | Continuous background monitoring | 100% |
+| **Low ($L$)** | Normal behavior with minor anomalies | Continue monitoring | 100% |
 | **Medium ($M$)** | Multiple suspicious behavioral indicators | Alert user & Increase monitoring frequency | 100% |
 | **High ($H$)** | Strong evidence of ransomware behavior | Suspend or terminate suspicious process | 98.5% |
 | **Critical ($C$)** | Active encryption & recovery manipulation | **Process termination, host isolation, backup protection, incident logging** | **99.2%** |
+
+### 📈 Layer 2 Behavioral Multiclass Classification Report
+
+```text
+================== RANSOMWARE CLASSIFICATION REPORT ==================
+              precision    recall  f1-score   support
+
+    WannaCry       0.98      0.97      0.98       150
+     LockBit       0.96      0.95      0.95       142
+      Cerber       0.95      0.96      0.95       135
+      Benign       0.99      0.99      0.99       300
+
+    accuracy                           0.97       727
+   macro avg       0.97      0.97      0.97       727
+weighted avg       0.97      0.97      0.97       727
+======================================================================
+
+```
 
 ---
 
