@@ -177,24 +177,6 @@ $$\text{Response Level} = \begin{cases} L, & \text{if } R < T_1 \\ M, & \text{if
 | **High ($H$)** | Strong evidence of ransomware behavior | Suspend or terminate suspicious process | 98.5% |
 | **Critical ($C$)** | Active encryption & recovery manipulation | **Process termination, host isolation, backup protection, incident logging** | **99.2%** |
 
-### 📈 Layer 2 Behavioral Multiclass Classification Report
-
-```text
-================== RANSOMWARE CLASSIFICATION REPORT ==================
-              precision    recall  f1-score   support
-
-    WannaCry       0.98      0.97      0.98       150
-     LockBit       0.96      0.95      0.95       142
-      Cerber       0.95      0.96      0.95       135
-      Benign       0.99      0.99      0.99       300
-
-    accuracy                           0.97       727
-   macro avg       0.97      0.97      0.97       727
-weighted avg       0.97      0.97      0.97       727
-======================================================================
-
-```
-
 ---
 
 ## 🔍 Troubleshooting and Operational Recovery
