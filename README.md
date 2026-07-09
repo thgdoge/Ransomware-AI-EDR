@@ -1,13 +1,6 @@
 
 # AI-Based Continuous Behavioral Monitoring and Adaptive Response for Ransomware Detection
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python Version">
-  <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Platform">
-  <img src="https://img.shields.io/badge/Accuracy-99.65%25-success?style=for-the-badge" alt="Accuracy">
-  <img src="https://img.shields.io/badge/Framework-EDR%20%7C%20SOC-red?style=for-the-badge" alt="Framework">
-</p>
-
 A multi-layered Endpoint Detection and Response (EDR) and Security Operations Center (SOC) simulation system. This project implements a hybrid defensive architecture combining static structural analysis (pre-execution) and dynamic behavioral tracking (runtime) to detect, classify, and mitigate ransomware threats in real time using an Ensemble Machine Learning approach.
 
 ---
