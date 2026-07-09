@@ -34,10 +34,10 @@ When administrators re-classify an event via the SOC management console, the sys
 
 ## ✨ Key Features
 
-* **📦 Hybrid Multi-Layered Defense**: Combining pre-execution static structure checking with continuous runtime observation and active containment.
-* **⏱️ Real-Time Behavioral Triggers**: To catch encryption cycles early without intensive tracing, the module deploys a consecutive alteration counter. If a process exceeds a modification barrier of **3 sequential anomalous file renames**, the trigger is tripped.
-* **🛡️ Security Scoring Bypass Line**: Critical registry mutations (e.g., modifying startup run hives to establish persistence) are treated as immediate high-risk alerts, skipping normal cumulative analytical scoring to fire network isolation protocols immediately.
-* **🤖 AI Agent Incident Reporting**: Integrates Google's `gemini-2.5-flash` via the `google-genai` SDK to dynamically evaluate threat sub-scores, compile formatted reports, and dispatch professional secure incident emails over SMTP to SOC administrators.
+* ** Hybrid Multi-Layered Defense**: Combining pre-execution static structure checking with continuous runtime observation and active containment.
+* ** Real-Time Behavioral Triggers**: To catch encryption cycles early without intensive tracing, the module deploys a consecutive alteration counter. If a process exceeds a modification barrier of **3 sequential anomalous file renames**, the trigger is tripped.
+* ** Security Scoring Bypass Line**: Critical registry mutations (e.g., modifying startup run hives to establish persistence) are treated as immediate high-risk alerts, skipping normal cumulative analytical scoring to fire network isolation protocols immediately.
+* ** AI Agent Incident Reporting**: Integrates Google's `gemini-2.5-flash` via the `google-genai` SDK to dynamically evaluate threat sub-scores, compile formatted reports, and dispatch professional secure incident emails over SMTP to SOC administrators.
 
 ---
 
@@ -153,7 +153,7 @@ The framework was evaluated using an 80:20 training/testing split with 5-fold cr
 | Random Forest | 95.80% | 96.10% | 95.50% | 95.80% |
 | XGBoost | 96.50% | 96.80% | 96.20% | 96.50% |
 | LightGBM | 96.30% | 96.50% | 96.10% | 96.30% |
-| **Proposed Ensemble Model** | **🚀 99.65%** | **99.65%** | **99.73%** | **99.69%** |
+| **Proposed Ensemble Model** | **99.65%** | **99.65%** | **99.73%** | **99.69%** |
 
 ### 📈 Test Dataset Confusion Matrix Deconstruction (Figure 6)
 
