@@ -154,9 +154,9 @@ except Exception:
 try:
     yara_rules = yara.compile(filepath=YARA_RULES_PATH)
     print("[INFO] YARA threat matching criteria activated.")
-except Exception:
+except Exception as e:
     yara_rules = None
-    print("[WARN] YARA rule definition arrays unavailable.")
+    print(f"[WARN] YARA rule definition arrays unavailable. Error details: {e}")
 
 # =====================================================================
 # GLOBAL LOGGING CONTROLLER (Fixed Position)
