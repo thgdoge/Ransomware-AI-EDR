@@ -18,6 +18,11 @@ from watchdog.events import FileSystemEventHandler
 from extractor import extract_static_all_features
 from dotenv import load_dotenv
 
+import threading 
+import win32api  
+import win32con  
+import win32event 
+
 # =====================================================================
 # PATH SCHEMAS
 # =====================================================================
@@ -154,13 +159,83 @@ except Exception:
     print("[WARN] YARA rule definition arrays unavailable.")
 
 # =====================================================================
+# GLOBAL LOGGING CONTROLLER (Fixed Position)
+# =====================================================================
+def log_event(file_name, status, conclusion, rf=0.0, xgb=0.0, if_score=0.0, lgbm=0.0):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with open(LOG_FILE, mode='a', newline='', encoding='utf-8') as f:
+                csv.writer(f).writerow([
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
+                    file_name, status, conclusion, 
+                    f"{rf:.1f}", f"{xgb:.1f}", f"{if_score:.1f}", f"{lgbm:.1f}"
+                ])
+            break  
+        except PermissionError:
+            if attempt < max_retries - 1:
+                time.sleep(0.5)  
+            else:
+                print(f"[WARN] Logging skipped for '{file_name}': File {LOG_FILE} is locked.")
+        except Exception as e:
+            print(f"[ERROR] Logging failed: {e}")
+            break
+
+# =====================================================================
 # ACTION CONTROLLERS
 # =====================================================================
+def start_registry_monitor(root_key, sub_key, friendly_name="Registry Guard"):
+    def registry_watch_loop():
+        try:
+            h_key = win32api.RegOpenKeyEx(root_key, sub_key, 0, win32con.KEY_NOTIFY)
+        except Exception as e:
+            print(f"[ERROR] Cannot monitor registry key: {e}")
+            return
+
+        event_handle = win32event.CreateEvent(None, 0, 0, None)
+        watch_filters = win32api.REG_NOTIFY_CHANGE_NAME | win32api.REG_NOTIFY_CHANGE_LAST_SET
+
+        print(f"[INFO] Monitoring registry key: {friendly_name}")
+
+        try:
+            while True:
+                win32api.RegNotifyChangeKeyValue(h_key, True, watch_filters, event_handle, True)
+                result = win32event.WaitForSingleObject(event_handle, 2000)
+
+                if result == win32event.WAIT_OBJECT_0:
+                    print(f"[ALERT] Registry modification detected: {friendly_name}")
+                    print(f"Path: {sub_key}")
+
+                    
+                    log_event(
+                        file_name=f"Registry: {friendly_name}",
+                        status="Malware Detected",
+                        conclusion="Persistence: Registry Modified",
+                        rf=100.0, xgb=100.0, if_score=100.0, lgbm=100.0
+                    )
+                    
+                    registry_scores = {'RF': 100.0, 'XGB': 100.0, 'LGBM': 100.0, 'IF': 100.0}
+                    send_ai_malware_alert(
+                        file_name=f"Registry Modification ({friendly_name})", 
+                        risk_scores=registry_scores, 
+                        action_taken="Isolate Network (Registry Protection Triggered)"
+                    )
+                    
+                    isolate_network()
+                    time.sleep(1)
+        except Exception as e:
+            print(f"[WARN] Registry monitor exception: {e}")
+        finally:
+            win32api.RegCloseKey(h_key)
+            win32api.CloseHandle(event_handle)
+
+    threading.Thread(target=registry_watch_loop, daemon=True).start()
 def isolate_network():
     print("[ACTION] Isolating endpoints from localized area loop networks...")
     try:
         subprocess.run(["ipconfig", "/release"], capture_output=True, text=True)
         print("[INFO] Interface disconnected from remote gateway channels.")
+        print(f"===============================================================")
     except Exception as e:
         print(f"[ERROR] Mitigation script failed to clear network socket connections: {e}")
 
@@ -237,7 +312,7 @@ class EDR_SOC_Handler(FileSystemEventHandler):
                 file_name = os.path.basename(event.src_path)
                 print(f"[ALERT] Anomalous mass-renaming signature observed: {file_name} -> {new_ext}")
                 
-                self.log_event(
+                log_event(
                     file_name=f"Encrypted: {file_name}", 
                     status="Malware Detected", 
                     conclusion="Behavioral: File Renamed", 
@@ -250,11 +325,8 @@ class EDR_SOC_Handler(FileSystemEventHandler):
                 if self.rename_count >= 3:
                     print("[ALERT] Sequential file corruption ceiling passed. Invoking reactive defense loop.")
                     dummy_scores = {'RF': 100.0, 'XGB': 100.0, 'LGBM': 100.0, 'IF': 100.0}
-                    
                     send_ai_malware_alert(file_name=f"Mass Modification Activity", risk_scores=dummy_scores, action_taken="Isolate Network (Urgent)")
-
                     isolate_network()
-
                     self.rename_count = 0
 
     def on_created(self, event):
@@ -277,7 +349,7 @@ class EDR_SOC_Handler(FileSystemEventHandler):
         if file_hash in whitelist:
             print(f"[PASS] Classification state: Verified Safe | Reason: Whitelisted cryptographic hash match")
             print(f"==============================================================")
-            self.log_event(file_name, "Safe", "Whitelisted", 0, 0, 0, 0)
+            log_event(file_name, "Safe", "Whitelisted", 0, 0, 0, 0)
             return
 
         print(f"[INFO] Launching static signature validation layers: {file_name}")
@@ -288,7 +360,7 @@ class EDR_SOC_Handler(FileSystemEventHandler):
                 if matches:
                     rule_name = str(matches[0])
                     print(f"[BLOCK] Classification state: Malicious | Reason: YARA baseline threat signature matched [{rule_name}]")
-                    self.log_event(file_name, "Malware Detected", f"YARA: {rule_name}", 100, 100, 100, 100)
+                    log_event(file_name, "Malware Detected", f"YARA: {rule_name}", 100, 100, 100, 100)
                     yara_scores = {'RF': 100.0, 'XGB': 100.0, 'LGBM': 100.0, 'IF': 100.0}
                     send_ai_malware_alert(file_name, yara_scores, action_taken=f"Isolate Network (YARA Rule: {rule_name})")
                     isolate_network()
@@ -330,27 +402,7 @@ class EDR_SOC_Handler(FileSystemEventHandler):
             print(f"[PASS] Classification state: Verified Safe | Reason: Analytical scores below operational risk ceilings.")
             print(f"==============================================================")
 
-        self.log_event(file_name, status, conclusion, sub_scores['rf'], sub_scores['xgb'], sub_scores['if'], sub_scores['lgbm'])
-
-    def log_event(self, file_name, status, conclusion, rf, xgb, if_score, lgbm):
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                with open(LOG_FILE, mode='a', newline='', encoding='utf-8') as f:
-                    csv.writer(f).writerow([
-                        datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
-                        file_name, status, conclusion, 
-                        f"{rf:.1f}", f"{xgb:.1f}", f"{if_score:.1f}", f"{lgbm:.1f}"
-                    ])
-                break  
-            except PermissionError:
-                if attempt < max_retries - 1:
-                    time.sleep(0.5)  
-                else:
-                    print(f"[WARN] Bỏ qua ghi log cho '{file_name}': File {LOG_FILE} has been blocked by (Excel/Streamlit)!")
-            except Exception as e:
-                print(f"[ERROR] Unknown Error while logging: {e}")
-                break
+        log_event(file_name, status, conclusion, sub_scores['rf'], sub_scores['xgb'], sub_scores['if'], sub_scores['lgbm'])
 
 def update_ai_models_online():
     """Triggers partial fits and saves newly compiled states to disk configurations."""
@@ -447,6 +499,16 @@ def learn_from_live_event(file_path, is_malware=True, reason="Zero-Day"):
 # HARDWARE AGENT THREAD LOOP RUNNER
 # =====================================================================
 if __name__ == "__main__":
+    print("[INFO] Initializing security modules...")
+    
+    start_registry_monitor(
+        root_key=win32con.HKEY_CURRENT_USER,
+        sub_key=r"Software\Microsoft\Windows\CurrentVersion\Run",
+        friendly_name="Windows_User_Startup_Persistence"
+    )
+    # extended registry monitoring to HKEY_LOCAL_MACHINE for system-wide startup persistence:
+    # start_registry_monitor(win32con.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run", "System_Startup_Persistence")
+
     observer = Observer()
     observer.schedule(EDR_SOC_Handler(), path=WATCH_DIR, recursive=False)
     observer.start()
