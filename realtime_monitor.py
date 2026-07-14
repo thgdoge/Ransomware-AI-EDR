@@ -17,6 +17,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from extractor import extract_static_all_features
 from dotenv import load_dotenv
+import pefile
 
 import threading 
 import win32api  
@@ -36,6 +37,16 @@ if not os.path.exists(WHITELIST_FILE):
     with open(WHITELIST_FILE, "w") as f: f.write("")
 if not os.path.exists(WATCH_DIR):
     os.makedirs(WATCH_DIR)
+DATA_DIR = os.path.dirname(LOG_FILE)
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+if not os.path.exists(LOG_FILE):
+    with open(LOG_FILE, mode='w', newline='', encoding='utf-8') as f:
+        csv.writer(f).writerow([
+            "Timestamp", "File Name", "Status", "Conclusion", 
+            "RF (%)", "XGB (%)", "IF (%)", "LGBM (%)"
+        ])
+    print("[INFO] Generated new 'soc_logs.csv' structure with standardized SOC headers.")
 
 print("[INFO] Initializing EDR Core Threat Engine...")
 
@@ -111,6 +122,21 @@ def send_ai_malware_alert(file_name, risk_scores, action_taken="Isolate Network"
 # =====================================================================
 # RESOURCE ALIGNMENT
 # =====================================================================
+def has_digital_signature(file_path):
+    try:
+        cmd = f'Get-AuthenticodeSignature "{file_path}" | Select-Object -ExpandProperty Status'
+        result = subprocess.run(
+            ["powershell", "-Command", cmd], 
+            capture_output=True, 
+            text=True, 
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        status = result.stdout.strip()
+        
+        return status == "Valid"
+    except Exception:
+        return False
+    
 def load_whitelist():
     whitelist = set()
     if os.path.exists(WHITELIST_FILE):
@@ -157,7 +183,6 @@ try:
 except Exception as e:
     yara_rules = None
     print(f"[WARN] YARA rule definition arrays unavailable. Error details: {e}")
-
 # =====================================================================
 # GLOBAL LOGGING CONTROLLER (Fixed Position)
 # =====================================================================
@@ -269,14 +294,6 @@ def calculate_risk_score(df_l1, file_path):
 
     final_risk = (scores['rf'] * 0.3) + (scores['xgb'] * 0.3) + (scores['if'] * 0.2) + (scores['lgbm'] * 0.2)
 
-    try:
-        with open(file_path, 'rb') as f:
-            content = f.read().lower()
-        if b"microsoft" in content or b"copyright" in content or b"software" in content:
-            final_risk *= 0.6
-    except Exception: 
-        pass
-
     return min(max(final_risk, 0.0), 100.0), scores
 
 # =====================================================================
@@ -367,6 +384,12 @@ class EDR_SOC_Handler(FileSystemEventHandler):
                     return
             except yara.Error as e:
                 print(f"[WARN] Processing anomaly inside YARA validation sequence for object: {file_name}: {e}")
+        
+        if has_digital_signature(file_path):
+            print(f"[PASS] Classification state: Verified Safe | Reason: Trusted Digital Signature verified on {file_name}")
+            print(f"==============================================================")
+            log_event(file_name, "Safe", "Whitelisted (Valid Authenticode Signature)", 0, 0, 0, 0)
+            return
 
         l1_vector, l2_dict = extract_static_all_features(file_path, layer2_api_names)
         if l1_vector is None: return
@@ -384,61 +407,117 @@ class EDR_SOC_Handler(FileSystemEventHandler):
 
         if risk_score >= 80.0:
             status = "Malware Detected"
+            conclusion = "Generic Malware"
+            
             try:
                 df_l2 = pd.DataFrame([l2_dict], columns=layer2_api_names)
                 ransomware_id = model_layer2.predict(df_l2)[0]
                 ransomware_name = encoder.inverse_transform([ransomware_id])[0]
-                conclusion = f"Ransomware ({ransomware_name})"
-            except Exception: 
+                
+                if str(ransomware_name).lower() == 'normal':
+                    status = "Malware Detected"
+                    conclusion = "Obfuscated Malware (Suspicious Static Features)"
+                    print(f"[ALERT] Threat boundary tripped. Obfuscation detected. Category classified: {conclusion}")
+                    
+                    scores = {'RF': sub_scores['rf'], 'XGB': sub_scores['xgb'], 'LGBM': sub_scores['lgbm'], 'IF': sub_scores['if']}
+                    send_ai_malware_alert(file_name, scores, action_taken=f"Isolate Network ({conclusion})")
+                    isolate_network()
+                    
+                    log_event(file_name, status, conclusion, sub_scores['rf'], sub_scores['xgb'], sub_scores['if'], sub_scores['lgbm'])
+                    return
+                else:
+                    status = "Malware Detected"
+                    conclusion = f"Ransomware ({ransomware_name})"
+                    print(f"[ALERT] Threat boundary tripped. Behavioral target category classified: {conclusion}")
+                    scores = {'RF': sub_scores['rf'], 'XGB': sub_scores['xgb'], 'LGBM': sub_scores['lgbm'], 'IF': sub_scores['if']}
+                    send_ai_malware_alert(file_name, scores, action_taken=f"Isolate Network ({conclusion})")
+                    isolate_network()
+                    
+                    log_event(file_name, status, conclusion, sub_scores['rf'], sub_scores['xgb'], sub_scores['if'], sub_scores['lgbm'])
+                    return
+                    
+            except Exception as e: 
+                status = "Malware Detected"
                 conclusion = "Generic Malware"
-            
-            print(f"[ALERT] Threat boundary tripped. Behavioral target category classified: {conclusion}")
-            scores = {'RF': sub_scores['rf'], 'XGB': sub_scores['xgb'], 'LGBM': sub_scores['lgbm'], 'IF': sub_scores['if']}
-            send_ai_malware_alert(file_name, scores, action_taken=f"Isolate Network ({conclusion})")
-            isolate_network()
+                print(f"[WARN] Layer 2 classification failed ({e}). Falling back to Layer 1 threat assessment.")
+                print(f"[ALERT] Threat boundary tripped. Behavioral target category classified: {conclusion}")
+                isolate_network()
+                log_event(file_name, status, conclusion, sub_scores['rf'], sub_scores['xgb'], sub_scores['if'], sub_scores['lgbm'])
+                return
         else:
             status = "Safe"
             conclusion = "Benign File"
             print(f"[PASS] Classification state: Verified Safe | Reason: Analytical scores below operational risk ceilings.")
             print(f"==============================================================")
-
-        log_event(file_name, status, conclusion, sub_scores['rf'], sub_scores['xgb'], sub_scores['if'], sub_scores['lgbm'])
-
+            log_event(file_name, status, conclusion, sub_scores['rf'], sub_scores['xgb'], sub_scores['if'], sub_scores['lgbm'])
 def update_ai_models_online():
-    """Triggers partial fits and saves newly compiled states to disk configurations."""
+    """Triggers retraining on the updated dataset and saves newly compiled states to disk."""
     DATASET_PATH = os.path.join(BASE_DIR, "data", "raw", "data_file.csv")
     if not os.path.exists(DATASET_PATH):
+        print("[WARN] Dataset data_file.csv not found. Skipping online update.")
         return False
         
     try:
         df_updated = pd.read_csv(DATASET_PATH)
-        X = df_updated.drop(columns=['label', 'Tên File', 'Thời gian', 'Hash'], errors='ignore')
-        y = df_updated['label']
+        # Drop target label column 'Benign' and all metadata columns
+        X = df_updated.drop(columns=[
+            'Benign', 'FileName', 'Timestamp', 'Hash', 
+            'Tên File', 'Thời gian', 'label', 'md5Hash'
+        ], errors='ignore')
+        
+        # Verify target label column
+        if 'Benign' in df_updated.columns:
+            y = df_updated['Benign']
+        elif 'label' in df_updated.columns:
+            y = df_updated['label']
+        else:
+            print("[ERROR] Target label column ('Benign') not found in dataset.")
+            return False
 
+        # Filter features based on expected Layer 1 configuration
+        if expected_features_l1:
+            X = X[[col for col in expected_features_l1 if col in X.columns]]
+            
+        print(f"[INFO] Online Learning triggered. Retraining Layer 1 models with {len(X)} samples...")
+        
         # 1. XGBoost
+        global model_xgb
         if os.path.exists(os.path.join(BASE_DIR, 'models', 'layer1_xgb_model.pkl')):
             from xgboost import XGBClassifier
             xgb = XGBClassifier(n_estimators=100, max_depth=6, random_state=42, eval_metric='logloss')
             xgb.fit(X, y)
             joblib.dump(xgb, os.path.join(BASE_DIR, 'models', 'layer1_xgb_model.pkl'))
-            models['xgb'] = xgb  
+            model_xgb = xgb  
 
         # 2. Random Forest
+        global model_rf
         if os.path.exists(os.path.join(BASE_DIR, 'models', 'layer1_rf_model.pkl')):
             from sklearn.ensemble import RandomForestClassifier
             rf = RandomForestClassifier(n_estimators=100, random_state=42)
             rf.fit(X, y)
             joblib.dump(rf, os.path.join(BASE_DIR, 'models', 'layer1_rf_model.pkl'))
-            models['rf'] = rf
+            model_rf = rf
 
         # 3. LightGBM
+        global model_lgbm
         if os.path.exists(os.path.join(BASE_DIR, 'models', 'layer1_lgbm_model.pkl')):
             from lightgbm import LGBMClassifier
             lgbm = LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
             lgbm.fit(X, y)
             joblib.dump(lgbm, os.path.join(BASE_DIR, 'models', 'layer1_lgbm_model.pkl'))
-            models['lgbm'] = lgbm
+            model_lgbm = lgbm
             
+        # 4. Isolation Forest (Unsupervised - trained only on Benign = 1 samples)
+        global model_if
+        if os.path.exists(os.path.join(BASE_DIR, 'models', 'layer1_if_model.pkl')):
+            from sklearn.ensemble import IsolationForest
+            X_benign = X[y == 1]
+            if len(X_benign) > 0:
+                ilf = IsolationForest(contamination=0.01, random_state=42)
+                ilf.fit(X_benign)
+                joblib.dump(ilf, os.path.join(BASE_DIR, 'models', 'layer1_if_model.pkl'))
+                model_if = ilf
+
         print("[SUCCESS] Live update sequence finished. Model memory parameters adjusted.")
         return True
     except Exception as e:
@@ -455,7 +534,8 @@ def learn_from_live_event(file_path, is_malware=True, reason="Zero-Day"):
     DATASET_PATH = os.path.join(BASE_DIR, "data", "raw", "data_file.csv")
     FEATURES_PKL = os.path.join(BASE_DIR, "models", "layer1_features.pkl")
     
-    label_value = 1 if is_malware else 0
+    # Standardize label: Malware = 0, Benign/Safe = 1
+    benign_label = 0 if is_malware else 1
     type_str = "ZERO-DAY MALWARE" if is_malware else "FALSE POSITIVE (WHITELIST)"
     print(f"\n[INFO] Active calibration event caught: {type_str} -> {file_name}")
 
@@ -470,16 +550,23 @@ def learn_from_live_event(file_path, is_malware=True, reason="Zero-Day"):
             if len(l1_vector) > len(expected_features): l1_vector = l1_vector[:len(expected_features)]
             else: l1_vector.extend([0] * (len(expected_features) - len(l1_vector)))
 
+        # Create new sample dictionary synchronized with English schemas
         new_sample = dict(zip(expected_features, l1_vector))
-        new_sample['label'] = label_value
+        new_sample['Benign'] = benign_label
+        new_sample['FileName'] = file_name
+        new_sample['Timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        new_sample['Hash'] = file_hash
 
         if os.path.exists(DATASET_PATH):
             df_train = pd.read_csv(DATASET_PATH)
+            # Support updating older files that might have been created with Vietnamese headers
+            df_train = df_train.rename(columns={'Tên File': 'FileName', 'Thời gian': 'Timestamp'}, errors='ignore')
             df_updated = pd.concat([df_train, pd.DataFrame([new_sample])], ignore_index=True)
             df_updated.to_csv(DATASET_PATH, index=False)
         else:
             pd.DataFrame([new_sample]).to_csv(DATASET_PATH, index=False)
 
+        # Trigger models active retraining
         update_ai_models_online()
 
         if not is_malware and file_hash:
